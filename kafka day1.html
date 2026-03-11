@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Deep Dive · Payment Event Streaming</title>
+    <!-- Mermaid for diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.8.0/dist/mermaid.min.js"></script>
+    <!-- Syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            background: #f2f5f9;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+        }
+        .deck {
+            max-width: 1300px;
+            width: 95%;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+        .slide {
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px -10px rgba(0,20,40,0.2);
+            padding: 40px 50px;
+            transition: all 0.2s;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+        h1 {
+            font-size: 3.2rem;
+            font-weight: 700;
+            background: linear-gradient(145deg, #0B2B4F, #1F4E7A);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        h2 {
+            font-size: 2.2rem;
+            font-weight: 600;
+            color: #0B2B4F;
+            border-left: 8px solid #E8762C;
+            padding-left: 25px;
+            margin: 20px 0 25px 0;
+        }
+        h3 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #1F4E7A;
+            margin: 25px 0 15px 0;
+        }
+        p, li {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            color: #1E2F3F;
+        }
+        ul, ol {
+            padding-left: 30px;
+            margin: 15px 0;
+        }
+        li {
+            margin: 8px 0;
+        }
+        code {
+            background: #eef3f8;
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 1.1rem;
+            color: #C0236B;
+        }
+        pre {
+            background: #1E2F3F;
+            color: #f8fafc;
+            padding: 20px;
+            border-radius: 20px;
+            overflow-x: auto;
+            font-size: 1rem;
+            margin: 20px 0;
+            box-shadow: inset 0 0 0 1px #3d556b;
+        }
+        pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            font-size: 0.95rem;
+        }
+        .mermaid {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 28px;
+            margin: 30px 0;
+            box-shadow: 0 5px 25px rgba(0,30,50,0.1);
+            display: flex;
+            justify-content: center;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        .badge {
+            background: #E8762C;
+            color: white;
+            font-weight: 600;
+            padding: 5px 16px;
+            border-radius: 60px;
+            display: inline-block;
+            font-size: 1rem;
+            letter-spacing: 0.3px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            font-size: 1.1rem;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+        th {
+            background: #0B2B4F;
+            color: white;
+            font-weight: 600;
+            padding: 15px 12px;
+        }
+        td {
+            background: #F8FBFE;
+            padding: 14px 12px;
+            border-bottom: 1px solid #CFDDEB;
+        }
+        .wrong-code {
+            border-left: 8px solid #c0236b;
+            background: #fff2f7;
+        }
+        .correct-code {
+            border-left: 8px solid #2e9a6e;
+            background: #f0f9f4;
+        }
+        .caption {
+            font-style: italic;
+            color: #4e6b82;
+            margin-top: -10px;
+            margin-bottom: 25px;
+        }
+        hr {
+            border: none;
+            border-top: 2px dashed #b3c9db;
+            margin: 35px 0;
+        }
+        @media (max-width: 800px) {
+            .slide { padding: 30px 25px; }
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 1.9rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="deck">
+
+    <!-- SLIDE 1: TITLE -->
+    <section class="slide">
+        <h1>⚡ Apache Kafka<br>Deep Dive for Payment Streaming</h1>
+        <p style="font-size:1.8rem; color:#1F4E7A; margin-top:20px;">Senior Architect's Guide · Java 17 / Spring Boot</p>
+        <div style="display:flex; gap:20px; margin-top:40px; flex-wrap:wrap;">
+            <span class="badge">12h self-study</span>
+            <span class="badge" style="background:#1F4E7A;">Messaging vs Streaming</span>
+            <span class="badge" style="background:#0B2B4F;">Exactly‑once</span>
+        </div>
+        <div style="margin-top: 40px; border-top: 2px solid #E8762C; width: 120px;"></div>
+        <p style="color:#476b8f; margin-top:30px;">brokers · topics · partitions · ISR · idempotency · transactions</p>
+    </section>
+
+    <!-- SLIDE 2: WHAT (definitions) -->
+    <section class="slide">
+        <h2>📌 What: messaging vs streaming</h2>
+        <ul>
+            <li><strong>Messaging</strong> – point‑to‑point or pub/sub, discrete messages (RabbitMQ).</li>
+            <li><strong>Streaming</strong> – unbounded, ordered, replayable event log.</li>
+        </ul>
+        <h3 style="margin-top:30px;">🔹 Kafka ecosystem – core definitions</h3>
+        <div class="grid-2">
+            <div>
+                <p><code>Broker</code> – storage node</p>
+                <p><code>Topic</code> – event category</p>
+                <p><code>Partition</code> – ordered log</p>
+                <p><code>Replication</code> – leader/follower</p>
+                <p><code>ISR</code> – in‑sync replicas</p>
+            </div>
+            <div>
+                <p><code>Producer</code> – publishes</p>
+                <p><code>Consumer</code> – reads</p>
+                <p><code>Offset</code> – position in partition</p>
+                <p><code>ACKs</code> – durability level</p>
+                <p><code>Idempotent</code> – no duplicates</p>
+            </div>
+        </div>
+        <p class="caption">payment events: PaymentAuthorized, PaymentCaptured, RefundInitiated</p>
+    </section>
+
+    <!-- SLIDE 3: WHY + WHEN + WHERE -->
+    <section class="slide">
+        <h2>❓ Why · When · Where</h2>
+        <div class="grid-2">
+            <div>
+                <h3>😵 Pain</h3>
+                <ul>
+                    <li>Tight coupling</li>
+                    <li>DB bottlenecks</li>
+                    <li>Data loss & no replay</li>
+                    <li>Mixed batch/stream</li>
+                </ul>
+            </div>
+            <div>
+                <h3>✅ Kafka solution</h3>
+                <ul>
+                    <li>Decoupled pub/sub</li>
+                    <li>Horizontal scale</li>
+                    <li>Durable log + replay</li>
+                    <li>Unified platform</li>
+                </ul>
+            </div>
+        </div>
+        <h3>📍 When to use</h3>
+        <p>High‑volume event ingestion, multiple independent consumers, exactly‑once, stream processing.<br>Avoid: < 100 msg/sec, simple point‑to‑point.</p>
+        <h3>🗺️ Where (layers)</h3>
+        <p>Edge → Streaming (Kafka) → Services / Stream processors → DB / Lake</p>
+    </section>
+
+    <!-- SLIDE 4: HOW (high‑level steps) -->
+    <section class="slide">
+        <h2>⚙️ How to implement</h2>
+        <ol style="columns:2; column-gap:40px;">
+            <li>Cluster: brokers, KRaft/ZK, topics (partitions, RF)</li>
+            <li>Producer: KafkaTemplate, acks=all, idempotence</li>
+            <li>Consumer: @KafkaListener, manual commit</li>
+            <li>Streams (optional): KStream, state stores</li>
+            <li>Exactly‑once: transactions + read_committed</li>
+        </ol>
+    </section>
+
+    <!-- SLIDE 5: KAFKA ARCHITECTURE (detailed) -->
+    <section class="slide">
+        <h2>🏗️ Kafka architecture deep dive</h2>
+        <ul>
+            <li><strong>Broker internals</strong> – log segments, replication manager, controller, network layer.</li>
+            <li><strong>Partition</strong> – unit of parallelism, each has one leader and ≥1 followers.</li>
+            <li><strong>ISR</strong> – fully caught followers; only they can become leader.</li>
+            <li><strong>Leader election</strong> – controlled by controller; avoids split‑brain.</li>
+            <li><strong>ZooKeeper / KRaft</strong> – metadata quorum.</li>
+        </ul>
+        <div class="mermaid">
+            graph TB
+                subgraph Producers
+                    P1[Payment App]
+                end
+                subgraph Cluster
+                    B1[Broker1] --> L1[Leader P0]
+                    B2[Broker2] --> L2[Leader P1]
+                    B3[Broker3] --> L3[Leader P2]
+                    L1 -.->|replica| B2
+                    L1 -.->|replica| B3
+                end
+                subgraph ConsumerGroup
+                    C1[Consumer 1]
+                    C2[Consumer 2]
+                end
+                P1 --> L1
+                L1 --> C1
+                L2 --> C1
+                L3 --> C2
+        </div>
+    </section>
+
+    <!-- SLIDE 6: SCENARIO (payment event flow) -->
+    <section class="slide">
+        <h2>💳 Scenario: payment event processing</h2>
+        <p>Payment service → <code>payment-events</code> (12p, RF3) → Fraud / Ledger / Reconciliation.</p>
+        <div class="mermaid">
+            sequenceDiagram
+                participant U as User
+                participant PS as Payment Service
+                participant K as Kafka (payment-events)
+                participant FS as Fraud Service
+                participant LS as Ledger Service
+                U->>PS: Pay
+                PS->>K: send(PaymentAuthorized)
+                K-->>FS: consume
+                K-->>LS: consume
+                FS->>K: send(FraudAlert) if needed
+                LS->>K: consume & update balances
+        </div>
+    </section>
+
+    <!-- SLIDE 7: GOALS (removed KPIs) – just qualitative -->
+    <section class="slide">
+        <h2>🎯 Desired outcomes</h2>
+        <ul>
+            <li>100k events/sec, p99 latency < 100ms</li>
+            <li>Zero data loss (acks=all, min.insync=2)</li>
+            <li>Exactly‑once per payment ID</li>
+            <li>Strict order per paymentId (key‑based)</li>
+            <li>Scale without downtime</li>
+        </ul>
+    </section>
+
+    <!-- SLIDE 8: WHAT CAN GO WRONG + WRONG CODE -->
+    <section class="slide">
+        <h2>⚠️ What can go wrong</h2>
+        <div class="grid-2">
+            <div>
+                <p><span class="badge" style="background:#c0236b;">data loss</span> acks=0, unclean leader</p>
+                <p><span class="badge" style="background:#c0236b;">duplicates</span> no idempotence + retries</p>
+                <p><span class="badge" style="background:#c0236b;">out‑of‑order</span> max.in.flight>1 without idempotence</p>
+                <p><span class="badge" style="background:#c0236b;">offset issues</span> auto‑commit before process</p>
+            </div>
+            <div>
+                <p><span class="badge" style="background:#c0236b;">unavailability</span> min.insync too high</p>
+                <p><span class="badge" style="background:#c0236b;">consumer lag</span> slow processing / hot partitions</p>
+                <p><span class="badge" style="background:#c0236b;">poison pill</span> no DLT / error handling</p>
+            </div>
+        </div>
+        <h3>❌ Wrong code example (data loss)</h3>
+        <pre><code class="language-java">props.put(ProducerConfig.ACKS_CONFIG, "0"); // no ack
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);</code></pre>
+        <h3>❌ Wrong code (duplicates)</h3>
+        <pre><code class="language-java">props.put(ProducerConfig.RETRIES_CONFIG, 10);
+// idempotence false -> retries may cause duplicates</code></pre>
+    </section>
+
+    <!-- SLIDE 9: WHY IT FAILS (root cause) -->
+    <section class="slide">
+        <h2>🔍 Why it fails (root causes)</h2>
+        <ul>
+            <li><strong>Data loss:</strong> acks=0/1 + leader crash before replication + unclean election</li>
+            <li><strong>Duplicates:</strong> producer retries & broker accepted first (no idempotent)</li>
+            <li><strong>Out‑of‑order:</strong> multiple in‑flight + retries ⇒ later message arrives first</li>
+            <li><strong>Offset issues:</strong> misunderstanding of commit timing (poll vs process)</li>
+            <li><strong>Unavailability:</strong> all replicas out of ISR, or min.insync > ISR size</li>
+            <li><strong>Lag:</strong> under‑provisioned consumers, uneven key distribution</li>
+            <li><strong>Poison pill:</strong> no schema validation, missing error handler</li>
+        </ul>
+    </section>
+
+    <!-- SLIDE 10: CORRECT APPROACH (patterns) -->
+    <section class="slide">
+        <h2>✅ Correct approach – mitigation patterns</h2>
+        <ul>
+            <li>Producer: <code>acks=all, enable.idempotence=true, max.in.flight=5</code></li>
+            <li>Consumer: manual commits, store processed IDs (idempotent)</li>
+            <li>Dead‑letter topic for unrecoverable errors</li>
+            <li><code>min.insync.replicas=2</code>, replication.factor=3</li>
+            <li>Monitor lag, partition skew, ISR</li>
+            <li>Use schema registry (Avro) + compatibility checks</li>
+        </ul>
+    </section>
+
+    <!-- SLIDE 11: KEY PRINCIPLES -->
+    <section class="slide">
+        <h2>📐 Key principles</h2>
+        <ul>
+            <li><strong>CAP</strong> – Kafka is AP, but can be tuned for strong consistency within ISR</li>
+            <li><strong>Idempotency</strong> – producer id + sequence number; consumer dedupe via DB</li>
+            <li><strong>Ordering</strong> – per partition guaranteed; use same key for same paymentId</li>
+            <li><strong>Exactly‑once</strong> – idempotent producer + transactions + read_committed</li>
+            <li><strong>Log compaction</strong> – keep latest value per key (for snapshots)</li>
+        </ul>
+    </section>
+
+    <!-- SLIDE 12: CORRECT IMPLEMENTATION (code with explanations) -->
+    <section class="slide">
+        <h2>💻 Correct implementation (Java / Spring)</h2>
+        <h3>application.yml (producer)</h3>
+        <pre><code class="language-yaml">spring.kafka.producer:
+  acks: all
+  retries: 10
+  enable-idempotence: true
+  max-in-flight-requests-per-connection: 5</code></pre>
+        <h3>Consumer with manual commit & idempotency</h3>
+        <pre><code class="language-java">@KafkaListener(topics = "payment-events")
+public void consume(ConsumerRecord&lt;String, PaymentEvent&gt; record, Acknowledgment ack) {
+    if (isProcessed(record.value().getPaymentId())) {
+        ack.acknowledge(); // skip duplicate
+        return;
+    }
+    processPayment(record.value());
+    markProcessed(record.value().getPaymentId());
+    ack.acknowledge(); // commit after success
+}</code></pre>
+        <p class="caption">idempotency via DB unique constraint; manual ack ensures at‑least‑once + dedupe.</p>
+    </section>
+
+    <!-- SLIDE 13: TRANSACTIONAL PRODUCER (exactly‑once) -->
+    <section class="slide">
+        <h2>🔁 Exactly‑once (transactional outbox)</h2>
+        <pre><code class="language-java">@Transactional("kafkaTransactionManager")
+public void processAndSend(PaymentEvent event) {
+    database.updateBalance(event);   // same transaction
+    kafkaTemplate.send("payment-events", event);
+    // if DB fails, Kafka transaction rolls back
+}</code></pre>
+        <p>Requires <code>transactional.id</code> and consumer <code>isolation.level=read_committed</code>.</p>
+    </section>
+
+    <!-- SLIDE 14: ERROR HANDLER + DLT -->
+    <section class="slide">
+        <h2>🧯 Error handler with Dead Letter Topic</h2>
+        <pre><code class="language-java">@Bean
+public CommonErrorHandler errorHandler(KafkaTemplate&lt;?,?&gt; template) {
+    return new DefaultErrorHandler((record, exception) -> {
+        // send to DLT after retries exhausted
+        template.send("payment-events-dlt", record.value());
+    }, new FixedBackOff(1000L, 3));
+}</code></pre>
+    </section>
+
+    <!-- SLIDE 15: EXECUTION FLOW (sequence diagram) -->
+    <section class="slide">
+        <h2>⏱️ Runtime execution flow</h2>
+        <div class="mermaid">
+            sequenceDiagram
+                participant P as Producer
+                participant L as Leader
+                participant F as Follower
+                participant C as Consumer
+                P->>L: send(acks=all)
+                L->>L: write local
+                L->>F: replicate
+                F-->>L: ack
+                L-->>P: ack
+                C->>L: poll()
+                L-->>C: records
+                C->>C: process + store id
+                C->>L: commit offset
+        </div>
+    </section>
+
+    <!-- SLIDE 16: COMMON MISTAKES (anti‑patterns) -->
+    <section class="slide">
+        <h2>🧠 Common mistakes (senior anti‑patterns)</h2>
+        <ul>
+            <li>Default producer settings (acks=1, no idempotence)</li>
+            <li>Auto‑commit with at‑least‑once business logic</li>
+            <li>Ignoring rebalance listeners → duplicate on rebalance</li>
+            <li>No poison pill handling → consumer stuck</li>
+            <li>Assuming partition count is static</li>
+            <li>Overusing transactions (performance hit)</li>
+            <li>Poor key choice (hot partitions / out‑of‑order)</li>
+            <li>No lag monitoring</li>
+            <li>Misconfigured max.poll.records / interval</li>
+            <li>Blocking send with .get()</li>
+        </ul>
+    </section>
+
+    <!-- SLIDE 17: DECISION MATRIX -->
+    <section class="slide">
+        <h2>📊 Decision matrix: Kafka vs alternatives</h2>
+        <table>
+            <thead><tr><th>Requirement</th><th>Kafka</th><th>RabbitMQ</th><th>Kinesis</th></tr></thead>
+            <tbody>
+                <tr><td>Throughput</td><td>★★★★★</td><td>★★★☆☆</td><td>★★★☆☆</td></tr>
+                <tr><td>Exactly‑once</td><td>✅</td><td>❌</td><td>✅</td></tr>
+                <tr><td>Ordering</td><td>per partition</td><td>per queue</td><td>per shard</td></tr>
+                <tr><td>Stream processing</td><td>Kafka Streams</td><td>limited</td><td>Kinesis Analytics</td></tr>
+                <tr><td>Ops overhead</td><td>medium (KRaft)</td><td>low</td><td>fully managed</td></tr>
+            </tbody>
+        </table>
+        <p class="caption">Use Kafka for large‑scale event streaming, payment pipelines, audit logs.</p>
+    </section>
+
+    <!-- SLIDE 18: CONCLUSION & NEXT STEPS -->
+    <section class="slide">
+        <h2>🚀 Conclusion & next steps</h2>
+        <p>You now understand:</p>
+        <ul>
+            <li>Kafka architecture, replication, ISR, leader election</li>
+            <li>Producer/consumer flows with delivery semantics</li>
+            <li>Failure modes & production‑grade mitigations</li>
+            <li>Exactly‑once with idempotency + transactions</li>
+        </ul>
+        <h3>🔜 Hands‑on recommendations</h3>
+        <ul>
+            <li>Run local KRaft cluster, create topics</li>
+            <li>Implement idempotent consumer with DLT</li>
+            <li>Experiment with partitioning & ordering</li>
+            <li>Explore Kafka Streams for fraud detection</li>
+        </ul>
+        <p style="margin-top:30px;">📚 <em>References: Apache Kafka docs, Spring Kafka, Confluent</em></p>
+    </section>
+</div>
+
+<!-- Mermaid init -->
+<script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { 'primaryColor': '#1F4E7A', 'primaryBorderColor': '#0B2B4F', 'primaryTextColor': '#1E2F3F', 'lineColor': '#E8762C' } });
+</script>
+<!-- re-run highlight for any dynamic code blocks -->
+<script>hljs.highlightAll();</script>
+</body>
+</html>
