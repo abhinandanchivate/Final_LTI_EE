@@ -77,11 +77,11 @@ At the **build level** (Maven/Gradle). The structure is a developer‑time const
 
 ```mermaid
 graph TD
-    Parent[payment-platform (parent POM)] --> common[payment-common]
-    Parent --> api[payment-api]
-    Parent --> service[payment-service]
-    Parent --> infra[payment-infrastructure]
-    Parent --> gateway[payment-gateway]
+    Parent["payment-platform (parent POM)"] --> common["payment-common"]
+    Parent --> api["payment-api"]
+    Parent --> service["payment-service"]
+    Parent --> infra["payment-infrastructure"]
+    Parent --> gateway["payment-gateway"]
     
     api --> service
     service --> common
@@ -89,7 +89,7 @@ graph TD
     infra --> common
     
     gateway -.-> api
-    gateway -.-> other[other services...]
+    gateway -.-> other["other services..."]
     
     classDef module fill:#e1f5fe,stroke:#01579b
     class Parent,common,api,service,infra,gateway module
@@ -545,12 +545,12 @@ At the **design phase**. The OpenAPI file lives in the repository and is used to
 ### 3.6 Architecture Diagram
 ```mermaid
 graph LR
-    Designer[API Designer] --> openapi[openapi.yaml]
-    openapi --> Generator[OpenAPI Generator]
-    Generator --> ServerStubs[Spring Controller Interfaces + DTOs]
-    Generator --> ClientSDK[Client SDKs (Java, TS, etc.)]
-    ServerStubs --> Developer[Developer implements interfaces]
-    ClientSDK --> Consumer[Client apps]
+    Designer["API Designer"] --> openapi["openapi.yaml"]
+    openapi --> Generator["OpenAPI Generator"]
+    Generator --> ServerStubs["Spring Controller Interfaces + DTOs"]
+    Generator --> ClientSDK["Client SDKs (Java, TS, etc.)"]
+    ServerStubs --> Developer["Developer implements interfaces"]
+    ClientSDK --> Consumer["Client apps"]
 ```
 
 ### 3.7 Scenario
